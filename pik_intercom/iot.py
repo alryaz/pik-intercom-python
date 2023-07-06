@@ -2,8 +2,12 @@ import asyncio
 import logging
 from abc import ABC
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Optional, Any, List, Mapping, Final
+
+try:
+    from enum import StrEnum
+except ImportError:
+    from strenum import StrEnum
 
 from .base import (
     BaseObject,
