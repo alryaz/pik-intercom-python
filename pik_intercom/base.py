@@ -32,7 +32,7 @@ class BaseObject(ABC):
     id: int
     source_data: Any = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
         """Update object attributes from provided source dictionary."""
         self.source_data = data
 
@@ -132,7 +132,7 @@ class ObjectWithSIP(BaseObject, ABC):
 
 
 @dataclass(slots=True)
-class BaseCallSession(ObjectWithSnapshot, ABC):
+class BaseCallSession(ObjectWithSnapshot, ObjectWithUnlocker, ABC):
     intercom_id: Optional[int] = None
     # property_id: Optional[int] = None
     notified_at: Optional[datetime] = None
@@ -141,8 +141,9 @@ class BaseCallSession(ObjectWithSnapshot, ABC):
     created_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(BaseCallSession, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        ObjectWithSnapshot.update_from_dict(self, data)
+        ObjectWithUnlocker.update_from_dict(self, data)
 
         self.intercom_id = (
             int(data["intercom_id"]) if data.get("intercom_id") else None

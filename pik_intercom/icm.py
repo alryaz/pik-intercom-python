@@ -26,8 +26,8 @@ class IcmProperty(BaseObject):
     # Externally set properties
     category: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IcmProperty, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseObject.update_from_dict(self, data)
 
         self.scheme_id = data.get("scheme_id") or None
         self.number = data.get("number") or None
@@ -49,14 +49,17 @@ class IcmProperty(BaseObject):
 
 
 @dataclass(slots=True)
-class BaseIcmCallSession(BaseCallSession, ObjectWithSnapshot):
+class BaseIcmCallSession(BaseCallSession):
     intercom_name: Optional[str] = None
     snapshot_url: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(BaseIcmCallSession, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseCallSession.update_from_dict(self, data)
         self.intercom_name = data.get("intercom_name") or None
         self.snapshot_url = data.get("photo_url") or None
+
+    async def async_unlock(self, mode: Optional[str] = None) -> None:
+        await self.api.icm_intercoms[self.intercom_id].async_unlock()
 
 
 @dataclass(slots=True)
@@ -73,10 +76,10 @@ class IcmCallSession(BaseIcmCallSession):
         """Call session identifier is embedded in a sub-dict."""
         return int(data["call_session"]["id"])
 
-    def update_from_dict(self, data: Mapping[str, Any]):
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
         # This call session type holds call session data in a sub-dict
         call_session_data = data.get("call_session") or {}
-        super(IcmCallSession, self).update_from_dict(call_session_data)
+        BaseIcmCallSession.update_from_dict(self, call_session_data)
 
         self.call_number = call_session_data.get("call_number")
         self.answered_customer_device_ids = tuple(
@@ -95,8 +98,8 @@ class IcmActiveCallSession(BaseIcmCallSession):
     sip_proxy: Optional[str] = None
     property_id: Optional[int] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IcmActiveCallSession, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseIcmCallSession.update_from_dict(self, data)
 
         self.call_duration = data.get("call_duration") or None
         self.call_id = data.get("call_id") or None
@@ -144,8 +147,11 @@ class IcmIntercom(
     # Non-standard attribute
     property_ids: Set[int] = field(default_factory=set)
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IcmIntercom, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        ObjectWithSnapshot.update_from_dict(self, data)
+        ObjectWithVideo.update_from_dict(self, data)
+        ObjectWithUnlocker.update_from_dict(self, data)
+        ObjectWithSIP.update_from_dict(self, data)
 
         self.scheme_id = data.get("scheme_id") or None
         self.building_id = data.get("building_id") or None

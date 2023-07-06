@@ -1,6 +1,6 @@
 """Pik Intercom API"""
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 import json
 import random
@@ -34,6 +34,8 @@ _TBaseObject = TypeVar("_TBaseObject", bound=BaseObject)
 
 @dataclass(slots=True)
 class PikAccount(BaseObject):
+    """Placeholder for data related to user account."""
+
     phone: Optional[str] = None
     email: Optional[str] = None
     apartment_id: Optional[int] = None
@@ -42,8 +44,8 @@ class PikAccount(BaseObject):
     last_name: Optional[str] = None
     middle_name: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(PikAccount, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseObject.update_from_dict(self, data)
 
         self.phone = data.get("phone") or None
         self.email = data.get("email") or None
@@ -56,9 +58,17 @@ class PikAccount(BaseObject):
 
 @dataclass(slots=True)
 class CustomerDevice(ObjectWithSIP):
+    """Placeholder for data related to customer device."""
+
     account_id: Optional[int] = None
+    """Account identifier"""
+
     uid: Optional[str] = None
+    """Unique identifier"""
+
     apartment_id: Optional[int] = None
+    """Apartment identifier (for installed devices)"""
+
     model: Optional[str] = None
     kind: Optional[str] = None
     firmware_version: Optional[str] = None
@@ -75,8 +85,8 @@ class CustomerDevice(ObjectWithSIP):
     sip_status: Optional[str] = None
     sip_password: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(CustomerDevice, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        ObjectWithSIP.update_from_dict(self, data)
 
         self.apartment_id = data.get("apartment_id") or None
         self.model = data.get("model") or None

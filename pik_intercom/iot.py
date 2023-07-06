@@ -26,8 +26,34 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class IotMeter(BaseObject):
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IotMeter, self).update_from_dict(data)
+    """IoT meter representation."""
+
+    serial: Optional[str] = None
+    """Meter serial number"""
+
+    kind: Optional[str] = None
+    """Type of meter"""
+
+    pipe_identifier: Optional[int] = None
+    """Identifier of pipe (for water meters)"""
+
+    status: Optional[str] = None
+    """Current status (for meters with communication)"""
+
+    title: Optional[str] = None
+    """Meter name"""
+
+    current_value: Optional[str] = None
+    """Current (total) value"""
+
+    month_value: Optional[str] = None
+    """Total usage this month"""
+
+    geo_unit_short_name: Optional[str] = None
+    """Location short name"""
+
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseObject.update_from_dict(self, data)
 
         try:
             pipe_identifier = int(data.get("pipe_identifier"))
@@ -43,25 +69,20 @@ class IotMeter(BaseObject):
         self.month_value = data.get("month_value") or None
         self.geo_unit_short_name = data.get("geo_unit_short_name") or None
 
-        return self
-
-    serial: Optional[str] = None
-    kind: Optional[str] = None
-    pipe_identifier: Optional[int] = None
-    status: Optional[str] = None
-    title: Optional[str] = None
-    current_value: Optional[str] = None
-    month_value: Optional[str] = None
-    geo_unit_short_name: Optional[str] = None
-
     @staticmethod
     def _convert_value(value: Any) -> float:
+        """
+        Convert incoming value formatted as human-readable string.
+        :param value: Incoming value
+        :return: Numeric representation (float)
+        """
         if value is None:
             raise TypeError("cannot convert NoneType to float")
         return float(str(value).rpartition(" ")[0].replace(" ", ""))
 
     @property
     def current_value_numeric(self) -> Optional[float]:
+        """Convert current value to numeric representation."""
         return (
             IotMeter._convert_value(value)
             if (value := self.current_value)
@@ -70,6 +91,7 @@ class IotMeter(BaseObject):
 
     @property
     def month_value_numeric(self) -> Optional[float]:
+        """Convert month value to numeric representation."""
         return (
             IotMeter._convert_value(value)
             if (value := self.month_value)
@@ -82,8 +104,8 @@ class BaseIotCamera(ObjectWithSnapshot, ABC):
     name: Optional[str] = None
     snapshot_url: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(BaseIotCamera, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseIotCamera.update_from_dict(self, data)
 
         self.name = data.get("name") or None
         self.snapshot_url = data.get("live_snapshot_url") or None
@@ -93,8 +115,9 @@ class BaseIotCamera(ObjectWithSnapshot, ABC):
 class BaseIotCameraWithRTSP(BaseIotCamera, ObjectWithVideo, ABC):
     stream_url: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(BaseIotCameraWithRTSP, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseIotCameraWithRTSP.update_from_dict(self, data)
+        ObjectWithVideo.update_from_dict(self, data)
 
         self.stream_url = data.get("rtsp_url") or None
 
@@ -123,8 +146,10 @@ class IotIntercom(BaseIotCamera, ObjectWithSIP, ObjectWithUnlocker):
     status: Optional[IotIntercomStatus | str] = None
     webrtc_supported: Optional[bool] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IotIntercom, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseIotCamera.update_from_dict(self, data)
+        ObjectWithSIP.update_from_dict(self, data)
+        ObjectWithUnlocker.update_from_dict(self, data)
 
         self.client_id = data.get("client_id") or None
         self.is_face_detection = bool(data.get("is_face_detection"))
@@ -225,8 +250,9 @@ class IotRelay(BaseIotCameraWithRTSP, ObjectWithUnlocker):
         """Unlock IoT relay"""
         return await self.api.iot_unlock_relay(self.id)
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IotRelay, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseIotCameraWithRTSP.update_from_dict(self, data)
+        ObjectWithUnlocker.update_from_dict(self, data)
 
         # Parse geo_unit parameter
         geo_unit_data = data.get("geo_unit") or {}
@@ -244,22 +270,22 @@ class IotRelay(BaseIotCameraWithRTSP, ObjectWithUnlocker):
 class IotCamera(BaseIotCameraWithRTSP):
     geo_unit_short_name: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IotCamera, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseIotCameraWithRTSP.update_from_dict(self, data)
+
         self.geo_unit_short_name = data.get("geo_unit_short_name") or None
-        return self
 
 
 @dataclass(slots=True)
-class IotCallSession(BaseCallSession, ObjectWithSnapshot):
+class IotCallSession(BaseCallSession):
     geo_unit_id: Optional[int] = None
     geo_unit_short_name: Optional[str] = None
     snapshot_url: Optional[str] = None
     identifier: Optional[str] = None
     provider: Optional[str] = None
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IotCallSession, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseCallSession.update_from_dict(self, data)
 
         self.geo_unit_id = data.get("geo_unit_id") or None
         self.geo_unit_short_name = data.get("geo_unit_short_name") or None
@@ -271,35 +297,23 @@ class IotCallSession(BaseCallSession, ObjectWithSnapshot):
         if self.created_at is None and (notified_at := self.notified_at):
             self.created_at = notified_at
 
+    async def async_unlock(self) -> None:
+        await self.api.iot_intercoms[self.intercom_id].async_unlock()
+
 
 @dataclass(slots=True)
-class IotActiveCallSession(
-    BaseCallSession, ObjectWithUnlocker, ObjectWithSnapshot
-):
+class IotActiveCallSession(IotCallSession):
     intercom_name: Optional[str] = None
     property_name: Optional[str] = None
-    geo_unit_id: Optional[int] = None
-    geo_unit_short_name: Optional[str] = None
-    identifier: Optional[str] = None
-    provider: Optional[str] = None
-    proxy: Optional[str] = None
-    snapshot_url: Optional[str] = None
+    sip_proxy: Optional[str] = None
     target_relay_ids: tuple[int, ...] = ()
 
-    def update_from_dict(self, data: Mapping[str, Any]):
-        super(IotActiveCallSession, self).update_from_dict(data)
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        IotCallSession.update_from_dict(self, data)
 
         self.intercom_name = data.get("intercom_name") or None
         self.property_name = data.get("property_name") or None
-
-        self.geo_unit_id = (
-            int(data["geo_unit_id"]) if data.get("geo_unit_id") else None
-        )
-        self.geo_unit_short_name = data.get("geo_unit_name") or None
-        self.identifier = data.get("identifier") or None
-        self.provider = data.get("provider") or None
-        self.proxy = data.get("proxy") or None
-        self.snapshot_url = data.get("snapshot_url")
+        self.sip_proxy = data.get("proxy") or None
         self.target_relay_ids = (
             (
                 int(relay_data["id"])
