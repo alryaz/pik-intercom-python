@@ -218,9 +218,11 @@ class PikIntercomAPI:
             headers[aiohttp.hdrs.AUTHORIZATION] = self.authorization
 
         request_counter = self.increment_request_counter()
-        lp = f"[{request_counter}] "
+        log_prefix = f"[{request_counter}] "
 
-        _LOGGER.info(lp + f"Performing {title} request: {method} -> {url}")
+        _LOGGER.info(
+            log_prefix + f"Performing {title} request: {method} -> {url}"
+        )
 
         try:
             async with self.session.request(
@@ -234,7 +236,7 @@ class PikIntercomAPI:
 
         except json.JSONDecodeError:
             _LOGGER.error(
-                lp + f"Could not perform {title} request, "
+                log_prefix + f"Could not perform {title} request, "
                 f"invalid JSON body: {await request.text()}"
             )
             raise MalformedDataError(
@@ -248,7 +250,7 @@ class PikIntercomAPI:
                 ), resp_data.get("description", "none provided")
 
                 _LOGGER.error(
-                    lp + f"Could not perform {title}, "
+                    log_prefix + f"Could not perform {title}, "
                     f"code: {code}, "
                     f"description: {description}"
                 )
@@ -256,8 +258,10 @@ class PikIntercomAPI:
                     f"Could not perform {title} ({code})"
                 )
 
-            _LOGGER.info(lp + f"Performed {title} request successfully")
-            _LOGGER.debug(lp + f"Response data: {resp_data}")
+            _LOGGER.info(
+                log_prefix + f"Performed {title} request successfully"
+            )
+            _LOGGER.debug(log_prefix + f"Response data: {resp_data}")
 
             return resp_data, request.headers, request_counter
 
@@ -437,7 +441,9 @@ class PikIntercomAPI:
             params={"customer_device[push_token]": push_token},
         )
 
-    async def fetch_last_active_session(self) -> IcmActiveCallSession | IotActiveCallSession | None:
+    async def fetch_last_active_session(
+        self,
+    ) -> IcmActiveCallSession | IotActiveCallSession | None:
         # Current call session is None
         create_task = asyncio.get_running_loop().create_task
         tasks = [
@@ -457,7 +463,7 @@ class PikIntercomAPI:
             )
             return call_session
         elif isinstance(call_session, IotActiveCallSession) and isinstance(
-                other_call_session, IcmActiveCallSession
+            other_call_session, IcmActiveCallSession
         ):
             if other_call_session.created_at > call_session.created_at:
                 _LOGGER.debug(
@@ -472,9 +478,7 @@ class PikIntercomAPI:
                 f"but IOT appears to be newer"
             )
         elif call_session is None:
-            if isinstance(
-                    other_call_session, IcmActiveCallSession
-            ):
+            if isinstance(other_call_session, IcmActiveCallSession):
                 _LOGGER.debug(
                     f"[{self}] Retrieved last call session from ICM: {call_session}"
                 )
@@ -564,7 +568,9 @@ class PikIntercomAPI:
         try:
             intercom = self.icm_intercoms[intercom_id]
         except KeyError:
-            self.icm_intercoms = intercom = IcmIntercom.create_from_dict(self, resp_data)
+            self.icm_intercoms = intercom = IcmIntercom.create_from_dict(
+                self, resp_data
+            )
         else:
             intercom.update_from_dict(resp_data)
 
