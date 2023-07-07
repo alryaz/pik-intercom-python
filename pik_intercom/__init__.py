@@ -1,6 +1,6 @@
 """Pik Intercom API"""
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 import json
 import random
@@ -24,11 +24,13 @@ from .icm import *
 from .iot import *
 
 _LOGGER: Final = logging.getLogger(__name__)
+
 DEFAULT_DEVICE_MODEL: Final = "Python API"
 DEFAULT_USER_AGENT: Final = "okhttp/4.9.0"
 DEFAULT_CLIENT_APP: Final = "alfred"
 DEFAULT_CLIENT_VERSION: Final = "2023.5.1"
 DEFAULT_CLIENT_OS: Final = "Android"
+
 _TBaseObject = TypeVar("_TBaseObject", bound=BaseObject)
 
 

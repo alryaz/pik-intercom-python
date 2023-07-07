@@ -105,7 +105,7 @@ class BaseIotCamera(ObjectWithSnapshot, ABC):
     snapshot_url: Optional[str] = None
 
     def update_from_dict(self, data: Mapping[str, Any]) -> None:
-        BaseIotCamera.update_from_dict(self, data)
+        ObjectWithSnapshot.update_from_dict(self, data)
 
         self.name = data.get("name") or None
         self.snapshot_url = data.get("live_snapshot_url") or None
@@ -116,7 +116,7 @@ class BaseIotCameraWithRTSP(BaseIotCamera, ObjectWithVideo, ABC):
     stream_url: Optional[str] = None
 
     def update_from_dict(self, data: Mapping[str, Any]) -> None:
-        BaseIotCameraWithRTSP.update_from_dict(self, data)
+        BaseIotCamera.update_from_dict(self, data)
         ObjectWithVideo.update_from_dict(self, data)
 
         self.stream_url = data.get("rtsp_url") or None
