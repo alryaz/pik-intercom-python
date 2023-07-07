@@ -2,7 +2,8 @@ import asyncio
 import logging
 from abc import ABC
 from dataclasses import dataclass
-from typing import Optional, Any, List, Mapping, Final
+from types import MappingProxyType
+from typing import Optional, Any, List, Mapping, Final, Union, Tuple
 
 try:
     from enum import StrEnum
@@ -24,6 +25,15 @@ from .errors import (
 _LOGGER: Final = logging.getLogger(__name__)
 
 
+class IotMeterKind(StrEnum):
+    """Known kinds of IoT meters."""
+
+    HOT = "hot"
+    COLD = "cold"
+    HEAT = "heat"
+    ELECTRO = "electro"
+
+
 @dataclass(slots=True)
 class IotMeter(BaseObject):
     """IoT meter representation."""
@@ -31,7 +41,7 @@ class IotMeter(BaseObject):
     serial: Optional[str] = None
     """Meter serial number"""
 
-    kind: Optional[str] = None
+    kind: Optional[IotMeterKind] = None
     """Type of meter"""
 
     pipe_identifier: Optional[int] = None
@@ -143,7 +153,7 @@ class IotIntercom(BaseIotCamera, ObjectWithSIP, ObjectWithUnlocker):
     sip_user: Optional[str] = None
 
     # Non-expected properties
-    status: Optional[IotIntercomStatus | str] = None
+    status: Optional[Union[IotIntercomStatus, str]] = None
     webrtc_supported: Optional[bool] = None
 
     def update_from_dict(self, data: Mapping[str, Any]) -> None:
@@ -204,7 +214,7 @@ class IotIntercom(BaseIotCamera, ObjectWithSIP, ObjectWithUnlocker):
             if relay.stream_url:
                 return relay.stream_url
 
-    async def async_unlock(self) -> None:
+    async def unlock(self) -> None:
         if not (relay_ids := self.relay_ids):
             raise RuntimeError("intercom does not have any relays")
         await asyncio.gather(*map(self.api.iot_unlock_relay, relay_ids))
@@ -215,6 +225,7 @@ class IotRelay(BaseIotCameraWithRTSP, ObjectWithUnlocker):
     # From geo_unit parameter
     geo_unit_id: Optional[int] = None
     geo_unit_full_name: Optional[str] = None
+    property_geo_units: Optional[Mapping[int, Tuple[str, str]]] = None
 
     # From user_settings parameter
     custom_name: Optional[str] = None
@@ -223,6 +234,40 @@ class IotRelay(BaseIotCameraWithRTSP, ObjectWithUnlocker):
 
     # Propagated from parent intercom
     geo_unit_short_name: Optional[str] = None
+
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseIotCameraWithRTSP.update_from_dict(self, data)
+        ObjectWithUnlocker.update_from_dict(self, data)
+
+        if property_geo_units := data.get("property_geo_units"):
+            units = {}
+            for geo_unit_data in property_geo_units:
+                units[geo_unit_data["id"]] = (
+                    geo_unit_data["post_name"],
+                    geo_unit_data["type"],
+                )
+            self.property_geo_units = MappingProxyType(units)
+        else:
+            self.property_geo_units = None
+
+        # Parse geo_unit parameter
+        geo_unit_data = data.get("geo_unit") or {}
+        self.geo_unit_id = geo_unit_data.get("id") or None
+        self.geo_unit_full_name = geo_unit_data.get("full_name") or None
+
+        # Parse user_settings parameter
+        relay_settings_data = data.get("user_settings") or {}
+        self.custom_name = relay_settings_data.get("custom_name") or None
+        self.is_favorite = bool(relay_settings_data.get("is_favorite"))
+        self.is_hidden = bool(relay_settings_data.get("is_hidden"))
+
+    @property
+    def property_geo_unit(self) -> Optional[Tuple[int, str, str]]:
+        for geo_unit_id, (
+            geo_unit_name,
+            geo_unit_type,
+        ) in self.property_geo_units.items():
+            return geo_unit_id, geo_unit_name, geo_unit_type
 
     @property
     def intercoms(self) -> List["IotIntercom"]:
@@ -246,24 +291,9 @@ class IotRelay(BaseIotCameraWithRTSP, ObjectWithUnlocker):
     def friendly_name(self) -> str:
         return self.custom_name or self.name
 
-    async def async_unlock(self) -> None:
+    async def unlock(self) -> None:
         """Unlock IoT relay"""
         return await self.api.iot_unlock_relay(self.id)
-
-    def update_from_dict(self, data: Mapping[str, Any]) -> None:
-        BaseIotCameraWithRTSP.update_from_dict(self, data)
-        ObjectWithUnlocker.update_from_dict(self, data)
-
-        # Parse geo_unit parameter
-        geo_unit_data = data.get("geo_unit") or {}
-        self.geo_unit_id = geo_unit_data.get("id") or None
-        self.geo_unit_full_name = geo_unit_data.get("full_name") or None
-
-        # Parse user_settings parameter
-        relay_settings_data = data.get("user_settings") or {}
-        self.custom_name = relay_settings_data.get("custom_name") or None
-        self.is_favorite = bool(relay_settings_data.get("is_favorite"))
-        self.is_hidden = bool(relay_settings_data.get("is_hidden"))
 
 
 @dataclass(slots=True)
@@ -297,8 +327,8 @@ class IotCallSession(BaseCallSession):
         if self.created_at is None and (notified_at := self.notified_at):
             self.created_at = notified_at
 
-    async def async_unlock(self) -> None:
-        await self.api.iot_intercoms[self.intercom_id].async_unlock()
+    async def unlock(self) -> None:
+        await self.api.iot_intercoms[self.intercom_id].unlock()
 
 
 @dataclass(slots=True)
@@ -333,7 +363,7 @@ class IotActiveCallSession(IotCallSession):
             if key in relay_ids
         ]
 
-    async def async_unlock(self) -> None:
+    async def unlock(self) -> None:
         if not self.target_relays:
             raise PikIntercomException("no target relays provided")
 
@@ -341,7 +371,7 @@ class IotActiveCallSession(IotCallSession):
         for task in (
             await asyncio.wait(
                 [
-                    asyncio.create_task(relay.async_unlock())
+                    asyncio.create_task(relay.unlock())
                     for relay in self.target_relays
                 ],
                 return_when=asyncio.ALL_COMPLETED,

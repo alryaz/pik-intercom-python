@@ -62,7 +62,7 @@ class ObjectWithSnapshot(BaseObject, ABC):
     def has_camera(self) -> bool:
         return bool(self.snapshot_url) or getattr(super(), "has_camera", False)
 
-    async def async_get_snapshot(self) -> bytes:
+    async def get_snapshot(self) -> bytes:
         snapshot_url = self.snapshot_url
         api = self.api
 
@@ -111,7 +111,7 @@ class ObjectWithVideo(BaseObject, ABC):
 
 class ObjectWithUnlocker(BaseObject, ABC):
     @abstractmethod
-    async def async_unlock(self) -> None:
+    async def unlock(self) -> None:
         raise NotImplementedError
 
 

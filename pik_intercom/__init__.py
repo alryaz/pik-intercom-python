@@ -1,6 +1,6 @@
 """Pik Intercom API"""
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 import json
 import random
@@ -12,7 +12,6 @@ from typing import (
     MutableMapping,
     Iterable,
     Type,
-    Union,
 )
 
 import aiohttp
@@ -28,7 +27,7 @@ _LOGGER: Final = logging.getLogger(__name__)
 DEFAULT_DEVICE_MODEL: Final = "Python API"
 DEFAULT_USER_AGENT: Final = "okhttp/4.9.0"
 DEFAULT_CLIENT_APP: Final = "alfred"
-DEFAULT_CLIENT_VERSION: Final = "2023.5.1"
+DEFAULT_CLIENT_VERSION: Final = "2023.6.1"
 DEFAULT_CLIENT_OS: Final = "Android"
 
 _TBaseObject = TypeVar("_TBaseObject", bound=BaseObject)
@@ -111,8 +110,36 @@ class CustomerDevice(ObjectWithSIP):
 
 
 class PikIntercomAPI:
+    """HTTP API for Pik Intercom"""
+
     BASE_ICM_URL: ClassVar[str] = "https://intercom.rubetek.com"
     BASE_IOT_URL: ClassVar[str] = "https://iot.rubetek.com"
+
+    __slots__ = (
+        "account",
+        "authorization",
+        "client_app",
+        "client_os",
+        "client_version",
+        "customer_devices",
+        "device_id",
+        "device_model",
+        "icm_buildings",
+        "icm_call_sessions",
+        "icm_intercoms",
+        "icm_properties",
+        "iot_call_sessions",
+        "iot_cameras",
+        "iot_intercoms",
+        "iot_meters",
+        "iot_relays",
+        "password",
+        "refresh_token",
+        "request_counter",
+        "session",
+        "user_agent",
+        "username",
+    )
 
     def __init__(
         self,
@@ -138,11 +165,11 @@ class PikIntercomAPI:
                 k=16,
             )
         )
+        self.client_app = client_app
+        self.client_os = client_os
+        self.client_version = client_version
         self.device_model = device_model
         self.user_agent = user_agent
-        self.client_app = client_app
-        self.client_version = client_version
-        self.client_os = client_os
 
         self.authorization: Optional[str] = None
         self.refresh_token: Optional[str] = None
@@ -150,19 +177,20 @@ class PikIntercomAPI:
 
         # General
         self.account: Optional[PikAccount] = None
-        self.icm_properties: dict[int, IcmProperty] = {}
         self.customer_devices: dict[int, CustomerDevice] = {}
 
         # Placeholders for ICM requests
+        self.icm_buildings: dict[int, IcmBuilding] = {}
+        self.icm_call_sessions: dict[int, IcmCallSession] = {}
         self.icm_intercoms: dict[int, IcmIntercom] = {}
+        self.icm_properties: dict[int, IcmProperty] = {}
 
         # Placeholders for IoT requests
-        self.iot_intercoms: dict[int, IotIntercom] = {}
-        self.iot_relays: dict[int, IotRelay] = {}
-        self.iot_cameras: dict[int, IotCamera] = {}
-        self.iot_meters: dict[int, IotMeter] = {}
-        self.icm_call_sessions: dict[int, IcmCallSession] = {}
         self.iot_call_sessions: dict[int, IotCallSession] = {}
+        self.iot_cameras: dict[int, IotCamera] = {}
+        self.iot_intercoms: dict[int, IotIntercom] = {}
+        self.iot_meters: dict[int, IotMeter] = {}
+        self.iot_relays: dict[int, IotRelay] = {}
 
         # @TODO: add other properties
 
@@ -178,7 +206,17 @@ class PikIntercomAPI:
             if device.uid == self.device_id:
                 return device
 
-    def get_last_call_session(self) -> Union[IotCallSession, IcmCallSession]:
+    def get_last_call_session(
+        self,
+    ) -> Optional[Union[IotCallSession, IcmCallSession]]:
+        """
+        Find last call session.
+
+        It will search both IoT and ICM call session stores
+        to fetch whatever call session is more recent.
+
+        :return: The most recent call session, if found
+        """
         last_call_session = None
         for source in (self.iot_call_sessions, self.icm_call_sessions):
             iterator = iter(source.values())
@@ -202,11 +240,26 @@ class PikIntercomAPI:
         method: str,
         url: str,
         headers: Optional[CIMultiDict] = None,
-        authenticated: bool = False,
+        authenticated: bool = True,
         title: str = "request",
         api_version: int = 2,
         **kwargs: Any,
     ) -> Tuple[Any, CIMultiDictProxy[str], int]:
+        """
+        Request wrapper.
+
+        This injects necessary authentication and validation
+        before making an aiohttp request. It is a helper method.
+
+        :param method: HTTP method
+        :param url: URL of API endpoint
+        :param headers: Request headers (optional)
+        :param authenticated: Use authentication (true by default)
+        :param title: Logging title ("request" by default)
+        :param api_version: API version for request (2 by default)
+        :param kwargs: Additional aiohttp.ClientSession.request keyword arguments
+        :return: Tuple of (Response data, Response headers, Request counter value)
+        """
         if headers is None:
             headers = CIMultiDict()
         elif not isinstance(headers, MutableMapping):
@@ -280,13 +333,26 @@ class PikIntercomAPI:
     async def iterate_paginated_request(
         self,
         url: str,
-        title: str,
+        title: str = "paginated request",
         method: str = aiohttp.hdrs.METH_GET,
-        authenticated: bool = True,
         params: Optional[Mapping[str, Any]] = None,
         max_pages: Optional[int] = None,
         **kwargs,
     ):
+        """
+        Asynchronous generator to iterate paginated requests.
+
+        Perform requests until it meets 'no data' condition,
+        or max requested pages limit is reached.
+
+        :param url: URL of API endpoint
+        :param title:
+        :param method: HTTP method ("GET" by default)
+        :param params: Query parameters (none by default)
+        :param max_pages: Max pages to request (unlimited by default)
+        :param kwargs: Additional PikIntercomAPI.make_request keyword arguments
+        :return: Generator of response data per each page with data
+        """
         params = {} if params is None else dict(params)
         page_number = 0
 
@@ -301,7 +367,6 @@ class PikIntercomAPI:
                 method,
                 url,
                 title=title,
-                authenticated=authenticated,
                 params=params,
                 **kwargs,
             )
@@ -314,6 +379,51 @@ class PikIntercomAPI:
 
             _LOGGER.debug(f"page {resp_data}")
             yield resp_data
+
+    async def update_single_item_from_request(
+        self,
+        url: str,
+        container: MutableMapping[int, _TBaseObject],
+        data_cls: Type[_TBaseObject],
+        title: str = "single item request",
+        method: str = aiohttp.hdrs.METH_GET,
+        item_id: Optional[int] = None,
+        **kwargs,
+    ) -> _TBaseObject:
+        """
+        Perform single request and update single item.
+
+        This is a shorthand to avoid mistakes and reuse code.
+
+        :param url: URL of API endpoint
+        :param title:
+        :param container:
+        :param data_cls:
+        :param method:
+        :param item_id:
+        :param kwargs:
+        :return:
+        """
+        resp_data, _, __ = await self.make_request(
+            method,
+            url,
+            title=title,
+            **kwargs,
+        )
+
+        if item_id is None:
+            item_id = data_cls.get_id_from_data(resp_data)
+
+        try:
+            item = container[item_id]
+        except KeyError:
+            container[item_id] = item = data_cls.create_from_dict(
+                self, resp_data
+            )
+        else:
+            item.update_from_dict(resp_data)
+
+        return item
 
     def iterate_data_list_and_update(
         self,
@@ -369,6 +479,7 @@ class PikIntercomAPI:
                     },
                 },
                 title="authentication",
+                authenticated=False,
             )
         except aiohttp.ClientResponseError as exc:
             _LOGGER.debug(f"Client response: {exc.headers}")
@@ -411,7 +522,6 @@ class PikIntercomAPI:
                 aiohttp.hdrs.METH_GET,
                 f"{self.BASE_ICM_URL}/api/customers/devices/lookup",
                 title="customer device lookup",
-                authenticated=True,
                 params={"customer_device[uid]": device_id},
             )
         except aiohttp.ClientResponseError as exc:
@@ -425,7 +535,6 @@ class PikIntercomAPI:
                 aiohttp.hdrs.METH_POST,
                 f"{self.BASE_ICM_URL}/api/customers/devices",
                 title="customer device initialization",
-                authenticated=True,
                 params={
                     "customer_device[model]": self.device_model,
                     "customer_device[kind]": "mobile",
@@ -449,13 +558,12 @@ class PikIntercomAPI:
             aiohttp.hdrs.METH_PATCH,
             f"/api/customers/devices/{customer_device_id}",
             title="customer device push token update",
-            authenticated=True,
             params={"customer_device[push_token]": push_token},
         )
 
     async def fetch_last_active_session(
         self,
-    ) -> IcmActiveCallSession | IotActiveCallSession | None:
+    ) -> Optional[Union[IcmActiveCallSession, IotActiveCallSession]]:
         # Current call session is None
         create_task = asyncio.get_running_loop().create_task
         tasks = [
@@ -513,7 +621,6 @@ class PikIntercomAPI:
             aiohttp.hdrs.METH_GET,
             f"{self.BASE_ICM_URL}/api/customers/properties",
             title="properties fetching",
-            authenticated=True,
         )
 
         retrieved_objects = {}
@@ -524,6 +631,20 @@ class PikIntercomAPI:
                 retrieved_objects[obj_id] = obj
                 obj.category = property_type
         return retrieved_objects
+
+    async def icm_update_building(self, building_id: int) -> IcmBuilding:
+        """
+        Update data about a single ICM building.
+        :param building_id: ICM building identifier
+        :return: Updated ICM building object
+        """
+        return await self.update_single_item_from_request(
+            f"{self.BASE_ICM_URL}/api/buildings/{building_id}",
+            container=self.icm_buildings,
+            data_cls=IcmBuilding,
+            title="building fetching",
+            item_id=building_id,
+        )
 
     async def icm_update_intercoms(
         self, property_id: Optional[int] = None
@@ -570,23 +691,18 @@ class PikIntercomAPI:
         return retrieved_objects
 
     async def icm_update_intercom(self, intercom_id: int) -> IcmIntercom:
-        resp_data, headers, request_counter = await self.make_request(
-            aiohttp.hdrs.METH_GET,
+        """
+        Update data about a single ICM intercom device.
+        :param intercom_id: ICM intercom identifier
+        :return: Updated ICM intercom object
+        """
+        return await self.update_single_item_from_request(
             f"{self.BASE_ICM_URL}/api/intercoms/{intercom_id}",
-            title="single intercom retrieval",
-            authenticated=True,
+            container=self.icm_intercoms,
+            data_cls=IcmIntercom,
+            title="building fetching",
+            item_id=intercom_id,
         )
-
-        try:
-            intercom = self.icm_intercoms[intercom_id]
-        except KeyError:
-            self.icm_intercoms = intercom = IcmIntercom.create_from_dict(
-                self, resp_data
-            )
-        else:
-            intercom.update_from_dict(resp_data)
-
-        return intercom
 
     async def icm_unlock_intercom(self, intercom_id: int, mode: str) -> None:
         """
@@ -599,7 +715,6 @@ class PikIntercomAPI:
             f"{self.BASE_ICM_URL}/api/customers/intercoms/{intercom_id}/unlock",
             data={"id": intercom_id, "door": mode},
             title="intercom unlocking",
-            authenticated=True,
         )
 
         if resp_data.get("request") is not True:
@@ -609,7 +724,7 @@ class PikIntercomAPI:
         _LOGGER.debug(f"[{request_counter}] Intercom unlocking successful")
 
     async def icm_update_call_sessions(
-        self, max_pages: int | None = 10
+        self, max_pages: Optional[int] = 10
     ) -> dict[int, IcmCallSession]:
         retrieved_objects = {}
         async for resp_data in self.iterate_paginated_request(
@@ -636,7 +751,6 @@ class PikIntercomAPI:
                 aiohttp.hdrs.METH_GET,
                 f"{self.BASE_ICM_URL}/api/call_sessions/last_open",
                 title="current call session",
-                authenticated=True,
             )
         except aiohttp.ClientResponseError as exc:
             if exc.status == 404:
@@ -721,7 +835,6 @@ class PikIntercomAPI:
             aiohttp.hdrs.METH_POST,
             f"{self.BASE_IOT_URL}/api/alfred/v1/personal/relays/{iot_relay_id}/unlock",
             title="IoT relay unlocking",
-            authenticated=True,
         )
 
         # @TODO: rule out correct response
@@ -738,7 +851,6 @@ class PikIntercomAPI:
                 aiohttp.hdrs.METH_GET,
                 f"{self.BASE_IOT_URL}/api/alfred/v1/personal/call_sessions/current",
                 title="current call session",
-                authenticated=True,
             )
         except aiohttp.ClientResponseError as exc:
             if exc.status == 404:

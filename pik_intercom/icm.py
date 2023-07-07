@@ -1,3 +1,4 @@
+from abc import ABC
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Optional, Mapping, Dict, Any, Set
@@ -15,24 +16,103 @@ from .base import (
 
 
 @dataclass(slots=True)
-class IcmProperty(BaseObject):
-    scheme_id: Optional[int] = None
-    number: Optional[str] = None
-    section: Optional[int] = None
-    building_id: Optional[int] = None
+class IcmBuilding(BaseObject):
+    building: Optional[str] = None
     district_id: Optional[int] = None
-    account_number: Optional[str] = None
+    entrances_count: Optional[int] = None
+    house: Optional[str] = None
+    housing: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    street: Optional[str] = None
 
-    # Externally set properties
-    category: Optional[str] = None
+    @property
+    def address(self) -> Optional[str]:
+        parts = []
+        if part := self.street:
+            parts.append(part)
+        if part := self.house:
+            parts.append(f"д. {part}")
+        if part := self.building:
+            parts.append(f"ст. {part}")
+        return ", ".join(parts) if parts else None
 
     def update_from_dict(self, data: Mapping[str, Any]) -> None:
         BaseObject.update_from_dict(self, data)
 
+        self.district_id = data.get("district_id") or None
+        self.entrances_count = data.get("entrances_count") or None
+        self.house = data.get("house") or None
+        self.housing = data.get("housing") or None
+        self.street = data.get("street") or None
+
+        try:
+            self.latitude, self.longitude = map(float, data["location"])
+        except (TypeError, ValueError, LookupError):
+            pass
+
+
+@dataclass(slots=True)
+class ObjectWithBuilding(BaseObject, ABC):
+    building_id: Optional[int] = None
+
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        BaseObject.update_from_dict(self, data)
+
+        self.building_id = (
+            int(data["building_id"]) if data.get("building_id") else None
+        )
+
+    @property
+    def building(self) -> Optional[IcmBuilding]:
+        return self.api.icm_buildings.get(self.building_id)
+
+
+class IcmPropertyCategory(StrEnum):
+    APARTMENT = "apartment"
+    PARKING_PLACE = "parking_place"
+    STOREROOM = "storeroom"
+    BKFN = "bkfn"
+
+
+@dataclass(slots=True)
+class IcmProperty(ObjectWithBuilding):
+    scheme_id: Optional[int] = None
+    number: Optional[str] = None
+    section: Optional[int] = None
+    district_id: Optional[int] = None
+    account_number: Optional[str] = None
+
+    # Externally set properties
+    category: Optional[IcmPropertyCategory] = None
+
+    @property
+    def address(self) -> Optional[str]:
+        if not (category := self.category):
+            return
+        if not (building := self.building):
+            return
+        if not (address := building.address):
+            return
+        address += ","
+        if category == IcmPropertyCategory.APARTMENT:
+            address += " кв."
+        elif category == IcmPropertyCategory.STOREROOM:
+            address += " кл."
+        elif category == IcmPropertyCategory.PARKING_PLACE:
+            address += " мм."
+        elif category == IcmPropertyCategory.BKFN:
+            address += " БКФН."
+        if number := self.number:
+            address += " " + str(number)
+        return address
+
+    def update_from_dict(self, data: Mapping[str, Any]) -> None:
+        ObjectWithBuilding.update_from_dict(self, data)
+
         self.scheme_id = data.get("scheme_id") or None
         self.number = data.get("number") or None
         self.section = data.get("section") or None
-        self.building_id = data.get("building_id") or None
         self.district_id = data.get("district_id") or None
         self.account_number = data.get("account_number") or None
 
@@ -58,8 +138,8 @@ class BaseIcmCallSession(BaseCallSession):
         self.intercom_name = data.get("intercom_name") or None
         self.snapshot_url = data.get("photo_url") or None
 
-    async def async_unlock(self, mode: Optional[str] = None) -> None:
-        await self.api.icm_intercoms[self.intercom_id].async_unlock()
+    async def unlock(self, mode: Optional[str] = None) -> None:
+        await self.api.icm_intercoms[self.intercom_id].unlock()
 
 
 @dataclass(slots=True)
@@ -122,9 +202,9 @@ class IcmIntercom(
     ObjectWithVideo,
     ObjectWithUnlocker,
     ObjectWithSIP,
+    ObjectWithBuilding,
 ):
     scheme_id: Optional[int] = None
-    building_id: Optional[int] = None
     kind: Optional[str] = None
     device_category: Optional[str] = None
     mode: Optional[str] = None
@@ -152,9 +232,9 @@ class IcmIntercom(
         ObjectWithVideo.update_from_dict(self, data)
         ObjectWithUnlocker.update_from_dict(self, data)
         ObjectWithSIP.update_from_dict(self, data)
+        ObjectWithBuilding.update_from_dict(self, data)
 
         self.scheme_id = data.get("scheme_id") or None
-        self.building_id = data.get("building_id") or None
         self.kind = data.get("kind") or None
         self.device_category = data.get("device_category") or None
         self.mode = data.get("mode") or None
@@ -198,6 +278,6 @@ class IcmIntercom(
     def snapshot_url(self) -> Optional[str]:
         return self.photo_url
 
-    async def async_unlock(self) -> None:
+    async def unlock(self) -> None:
         """Unlock intercom"""
         await self.api.icm_unlock_intercom(self.id, self.mode)
