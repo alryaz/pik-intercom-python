@@ -345,7 +345,7 @@ class IotActiveCallSession(IotCallSession):
         self.property_name = data.get("property_name") or None
         self.sip_proxy = data.get("proxy") or None
         self.target_relay_ids = (
-            (
+            tuple(
                 int(relay_data["id"])
                 for relay_data in data["target_relays"]
                 if relay_data
